@@ -1,0 +1,6 @@
+{
+  "name": "دفتر المبيعات",
+  "description": "تطبيق محلي لتسجيل المبيعات اليومية، متابعة السداد الكلي والجزئي والذمم غير المسددة بعملة الشيكل، واستعراض الإحصاءات والرسوم البيانية المالية.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

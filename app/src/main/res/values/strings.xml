@@ -1,0 +1,128 @@
+<resources>
+    <string name="app_name">دفتر المبيعات</string>
+
+    <!-- Navigation Tabs -->
+    <string name="tab_daily">اليومية</string>
+    <string name="tab_unpaid">غير المسدد</string>
+    <string name="tab_customers">الزبائن</string>
+    <string name="tab_analytics">الإحصاء</string>
+
+    <!-- Common -->
+    <string name="currency_symbol">₪</string>
+    <string name="currency_name">شيكل</string>
+    <string name="today">اليوم</string>
+    <string name="yesterday">أمس</string>
+    <string name="back_to_today">العودة لليوم</string>
+    <string name="previous_day">اليوم السابق</string>
+    <string name="next_day">اليوم التالي</string>
+    <string name="pick_date">اختيار التاريخ</string>
+    <string name="search_customer_hint">ابحث باسم العميل...</string>
+    <string name="clear_search">مسح البحث</string>
+    <string name="cancel">إلغاء</string>
+    <string name="save">حفظ</string>
+    <string name="delete">حذف</string>
+    <string name="edit">تعديل</string>
+    <string name="close">إغلاق</string>
+    <string name="confirm">تأكيد</string>
+
+    <!-- Daily Sales -->
+    <string name="daily_title">المبيعات اليومية</string>
+    <string name="add_sale">تسجيل بيع</string>
+    <string name="total_sales">إجمالي المبيعات</string>
+    <string name="collected_amount">المحصّل</string>
+    <string name="remaining_amount">المتبقي</string>
+    <string name="filter_all">الكل</string>
+    <string name="filter_paid">مسدد</string>
+    <string name="filter_partial">دفعة جزئية</string>
+    <string name="filter_unpaid">غير مسدد</string>
+    <string name="empty_daily_title">لا توجد مبيعات مسجلة لهذا اليوم</string>
+    <string name="empty_daily_subtitle">اضغط على زر "تسجيل بيع" لإضافة عملية جديدة بعملة الشيكل خلال ثوانٍ</string>
+    <string name="empty_filter_title">لا توجد نتائج مطابقة</string>
+    <string name="empty_filter_subtitle">جرّب تغيير التصفية أو مسح نص البحث</string>
+    <string name="pay_now">سداد</string>
+
+    <!-- Unpaid Tab -->
+    <string name="unpaid_title">الذمم غير المسددة</string>
+    <string name="total_unpaid_balance">إجمالي الغير مسدد</string>
+    <string name="open_invoices_count">%1$d فاتورة مفتوحة</string>
+    <string name="customers_count">%1$d عميل</string>
+    <string name="view_by_sale">حسب الفواتير</string>
+    <string name="view_by_customer">حسب العميل</string>
+    <string name="sort_highest">الأعلى مبلغاً</string>
+    <string name="sort_oldest">الأقدم</string>
+    <string name="sort_newest">الأحدث</string>
+    <string name="empty_unpaid_title">لا توجد ذمم غير مسددة!</string>
+    <string name="empty_unpaid_subtitle">جميع المبيعات المسجلة تم تحصيلها بالكامل</string>
+    <string name="settle_full">سداد كامل</string>
+    <string name="add_payment">دفعة</string>
+
+    <!-- Add Sale & Detail Sheet -->
+    <string name="new_sale_title">تسجيل عملية بيع جديدة</string>
+    <string name="edit_sale_title">تعديل عملية البيع</string>
+    <string name="customer_name_label">اسم العميل</string>
+    <string name="total_amount_label">المبلغ الإجمالي (₪)</string>
+    <string name="payment_status_label">حالة السداد</string>
+    <string name="status_full_paid">مسدد بالكامل</string>
+    <string name="status_unpaid">آجل (غير مسدد)</string>
+    <string name="status_partial">دفعة جزئية</string>
+    <string name="initial_payment_label">قيمة الدفعة الأولى (₪)</string>
+    <string name="note_optional_label">ملاحظة (اختياري)</string>
+    <string name="recent_customers">عملاء سابقون</string>
+    <string name="sale_details_title">تفاصيل الفاتورة</string>
+    <string name="payment_history">سجل الدفعات</string>
+    <string name="no_payments_yet">لم يتم تسجيل أي دفعة بعد</string>
+    <string name="new_payment_amount">قيمة الدفعة (₪)</string>
+    <string name="record_payment">تسجيل الدفعة</string>
+    <string name="settle_remaining_button">سداد المتبقي بالكامل (%1$s)</string>
+    <string name="delete_sale_confirm_title">حذف عملية البيع؟</string>
+    <string name="delete_sale_confirm_body">سيتم حذف الفاتورة وجميع دفعاتها المسجلة نهائياً.</string>
+
+    <!-- Analytics Tab -->
+    <string name="analytics_title">الإحصاء المالي</string>
+    <string name="range_7_days">7 أيام</string>
+    <string name="range_month">هذا الشهر</string>
+    <string name="range_all">الكل</string>
+    <string name="range_custom">مخصص</string>
+    <string name="custom_start_date">من تاريخ</string>
+    <string name="custom_end_date">إلى تاريخ</string>
+    <string name="select_start_date">اختر تاريخ البداية</string>
+    <string name="select_end_date">اختر تاريخ النهاية</string>
+    <string name="collection_rate">نسبة التحصيل</string>
+    <string name="sales_count">عدد العمليات</string>
+    <string name="chart_collected_vs_remaining">المحصّل مقابل المتبقي</string>
+    <string name="chart_status_breakdown">توزيع حالات السداد</string>
+    <string name="top_unpaid_customers">أعلى الذمم غير المسددة</string>
+    <string name="empty_analytics_title">لا توجد بيانات كافية للإحصاء</string>
+    <string name="empty_analytics_subtitle">سجّل مبيعاتك اليومية لتظهر لك الرسوم البيانية ومعدلات التحصيل تلقائياً</string>
+
+    <!-- Validation & Feedback -->
+    <string name="error_empty_customer">يرجى إدخال اسم العميل</string>
+    <string name="error_invalid_amount">يرجى إدخال مبلغ صحيح أكبر من صفر</string>
+    <string name="error_partial_exceeds">الدفعة الجزئية يجب أن تكون أقل من المبلغ الإجمالي</string>
+    <string name="error_payment_exceeds">قيمة الدفعة تتجاوز المبلغ المتبقي</string>
+    <string name="msg_sale_added">تم تسجيل عملية البيع بنجاح</string>
+    <string name="msg_sale_updated">تم تحديث عملية البيع</string>
+    <string name="msg_sale_deleted">تم حذف عملية البيع</string>
+    <string name="msg_payment_recorded">تم تسجيل الدفعة بنجاح</string>
+    <string name="msg_settled_full">تم سداد الفاتورة بالكامل</string>
+    <string name="msg_customer_settled">تم تسديد جميع ذمم العميل</string>
+
+    <!-- Theme -->
+    <string name="toggle_theme">تبديل المظهر</string>
+    <string name="theme_light">الوضع الفاتح</string>
+    <string name="theme_dark">الوضع الداكن</string>
+
+    <!-- Customers Tab -->
+    <string name="customers_title">الزبائن والمشتريات</string>
+    <string name="top_buyer_label">الأكثر شراءً</string>
+    <string name="total_purchases_label">إجمالي المشتريات</string>
+    <string name="customer_search_hint">ابحث باسم الزبون أو المشترك...</string>
+    <string name="sort_most_purchases">الأكثر شراءً</string>
+    <string name="sort_most_orders">الأكثر عمليات</string>
+    <string name="sort_most_debt">الأعلى ذمةً</string>
+    <string name="sort_recent_activity">الأحدث</string>
+    <string name="empty_customers_title">لا يوجد زبائن مسجلون بعد</string>
+    <string name="empty_customers_subtitle">عند تسجيل أي عملية بيع سيظهر كل زبون هنا مع إجمالي مشترياته المسددة وغير المسددة</string>
+    <string name="all_paid_badge">خالص السداد</string>
+    <string name="new_sale_for_customer">بيع جديد لهذا الزبون</string>
+</resources>
