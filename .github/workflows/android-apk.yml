@@ -39,8 +39,9 @@ jobs:
             echo "::error::Configure the persistent Android signing secrets before building an update."
             exit 1
           fi
-          printf '%s' "$ANDROID_SIGNING_KEYSTORE_BASE64" | base64 --decode > debug.keystore
-          test -s debug.keystore
+          mkdir -p app
+          printf '%s' "$ANDROID_SIGNING_KEYSTORE_BASE64" | base64 --decode > app/debug.keystore
+          test -s app/debug.keystore
 
       - name: Validate signing credentials
         env:
