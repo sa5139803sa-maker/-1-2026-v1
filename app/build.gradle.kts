@@ -16,8 +16,8 @@ android {
     applicationId = "com.aistudio.salesledger.kxrmpq"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    versionCode = 2
+    versionName = "1.1"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -33,10 +33,11 @@ android {
       keyPassword = System.getenv("KEY_PASSWORD")
     }
     create("debugConfig") {
-      storeFile = file("${rootDir}/debug.keystore")
-      storePassword = "android"
-      keyAlias = "androiddebugkey"
-      keyPassword = "android"
+      val keystorePath = System.getenv("ANDROID_SIGNING_KEYSTORE_PATH") ?: "${rootDir}/debug.keystore"
+      storeFile = file(keystorePath)
+      storePassword = System.getenv("ANDROID_SIGNING_STORE_PASSWORD") ?: "android"
+      keyAlias = System.getenv("ANDROID_SIGNING_KEY_ALIAS") ?: "androiddebugkey"
+      keyPassword = System.getenv("ANDROID_SIGNING_KEY_PASSWORD") ?: "android"
     }
   }
 
