@@ -37,6 +37,12 @@
     <string name="filter_unpaid">غير مسدد</string>
     <string name="empty_daily_title">لا توجد مبيعات مسجلة لهذا اليوم</string>
     <string name="empty_daily_subtitle">اضغط على زر "تسجيل بيع" لإضافة عملية جديدة بعملة الشيكل خلال ثوانٍ</string>
+    <string name="empty_period_title">لا توجد مبيعات في هذه الفترة</string>
+    <string name="empty_period_subtitle">اضغط على زر "تسجيل بيع" لإضافة عملية جديدة أو اختر فترة زمنية أخرى</string>
+    <string name="period_today">اليوم</string>
+    <string name="period_yesterday">أمس</string>
+    <string name="period_week">أسبوع</string>
+    <string name="period_month">شهر</string>
     <string name="empty_filter_title">لا توجد نتائج مطابقة</string>
     <string name="empty_filter_subtitle">جرّب تغيير التصفية أو مسح نص البحث</string>
     <string name="pay_now">سداد</string>
@@ -125,4 +131,27 @@
     <string name="empty_customers_subtitle">عند تسجيل أي عملية بيع سيظهر كل زبون هنا مع إجمالي مشترياته المسددة وغير المسددة</string>
     <string name="all_paid_badge">خالص السداد</string>
     <string name="new_sale_for_customer">بيع جديد لهذا الزبون</string>
+
+    <!-- Expenses System -->
+    <string name="tab_expenses">المصروفات</string>
+    <string name="expenses_title">دفتر المصروفات</string>
+    <string name="add_expense">تسجيل مصروف</string>
+    <string name="new_expense_title">تسجيل مصروف جديد</string>
+    <string name="edit_expense_title">تعديل المصروف</string>
+    <string name="expense_details_title">تفاصيل المصروف</string>
+    <string name="expense_title_label">بيان المصروف</string>
+    <string name="expense_category_label">الفئة</string>
+    <string name="expense_amount_label">المبلغ (₪)</string>
+    <string name="expense_date_label">تاريخ المصروف</string>
+    <string name="recent_expenses_titles">مصروفات متكررة</string>
+    <string name="expense_search_hint">ابحث في المصروفات...</string>
+    <string name="total_expenses_label">إجمالي المصروفات</string>
+    <string name="net_cash_label">صافي السيولة</string>
+    <string name="net_profit_label">صافي الدفتر</string>
+    <string name="expenses_by_category">توزيع المصروفات حسب الفئة</string>
+    <string name="empty_expenses_title">لا توجد مصروفات مسجلة</string>
+    <string name="empty_expenses_subtitle">اضغط على زر "تسجيل مصروف" لتوثيق مصروفات المحل وحساب صافي الربح تلقائياً</string>
+    <string name="error_empty_expense_title">يرجى إدخال بيان المصروف</string>
+    <string name="delete_expense_confirm_title">حذف المصروف؟</string>
+    <string name="delete_expense_confirm_body">سيتم حذف هذا المصروف نهائياً من السجل.</string>
 </resources>

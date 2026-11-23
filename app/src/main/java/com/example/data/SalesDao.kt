@@ -26,6 +26,11 @@ interface SalesDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPayment(payment: PaymentEntity): Long
 
+    @Transaction
+    suspend fun insertPaymentsBatch(payments: List<PaymentEntity>) {
+        payments.forEach { insertPayment(it) }
+    }
+
     @Query("DELETE FROM payments WHERE id = :paymentId")
     suspend fun deletePaymentById(paymentId: Long)
 

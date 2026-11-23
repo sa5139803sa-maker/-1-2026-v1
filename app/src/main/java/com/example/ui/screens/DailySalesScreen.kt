@@ -41,6 +41,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,10 +54,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.data.SaleWithPayments
 import com.example.ui.DailyFilter
+import com.example.ui.DailySalesPeriod
 import com.example.ui.SalesUiState
 import com.example.ui.components.EmptyLedgerState
 import com.example.ui.components.SaleItemCard
@@ -71,6 +75,7 @@ fun DailySalesScreen(
     onNextDay: () -> Unit,
     onGoToToday: () -> Unit,
     onSelectDay: (Long) -> Unit,
+    onSelectPeriod: (DailySalesPeriod) -> Unit,
     onSelectFilter: (DailyFilter) -> Unit,
     onSearchQueryChange: (String) -> Unit,
     onSaleClick: (SaleWithPayments) -> Unit,
@@ -151,7 +156,11 @@ fun DailySalesScreen(
                                 tint = MaterialTheme.colorScheme.primary,
                             )
                             Text(
-                                text = LedgerFormatters.formatDayLabel(uiState.selectedDayMillis),
+                                text = when (uiState.dailySalesPeriod) {
+                                    DailySalesPeriod.WEEK -> "آخر 7 أيام"
+                                    DailySalesPeriod.MONTH -> "هذا الشهر"
+                                    else -> LedgerFormatters.formatDayLabel(uiState.selectedDayMillis)
+                                },
                                 style = MaterialTheme.typography.titleSmall,
                                 color = MaterialTheme.colorScheme.onSurface,
                             )
@@ -186,9 +195,11 @@ fun DailySalesScreen(
             }
         }
 
-        // Emerald Hero Summary Card
+        // Emerald Hero Summary Card with Built-in Period Filter
         item {
             DailyHeroSummaryCard(
+                selectedPeriod = uiState.dailySalesPeriod,
+                onSelectPeriod = onSelectPeriod,
                 totalSales = uiState.dailySummary.totalSales,
                 totalCollected = uiState.dailySummary.totalCollected,
                 totalRemaining = uiState.dailySummary.totalRemaining,
@@ -260,24 +271,36 @@ fun DailySalesScreen(
         if (uiState.dailySales.isEmpty()) {
             item {
                 val isFilteredEmpty = uiState.allDaySalesCount > 0
+                val isMultiDay = uiState.dailySalesPeriod == DailySalesPeriod.WEEK ||
+                    uiState.dailySalesPeriod == DailySalesPeriod.MONTH
                 EmptyLedgerState(
                     title = stringResource(
-                        if (isFilteredEmpty) R.string.empty_filter_title else R.string.empty_daily_title
+                        when {
+                            isFilteredEmpty -> R.string.empty_filter_title
+                            isMultiDay -> R.string.empty_period_title
+                            else -> R.string.empty_daily_title
+                        }
                     ),
                     subtitle = stringResource(
-                        if (isFilteredEmpty) R.string.empty_filter_subtitle else R.string.empty_daily_subtitle
+                        when {
+                            isFilteredEmpty -> R.string.empty_filter_subtitle
+                            isMultiDay -> R.string.empty_period_subtitle
+                            else -> R.string.empty_daily_subtitle
+                        }
                     ),
                     showIllustration = !isFilteredEmpty,
                 )
             }
         } else {
+            val showDateOnCards = uiState.dailySalesPeriod == DailySalesPeriod.WEEK ||
+                uiState.dailySalesPeriod == DailySalesPeriod.MONTH
             items(
                 items = uiState.dailySales,
                 key = { it.sale.id },
             ) { item ->
                 SaleItemCard(
                     item = item,
-                    showFullDate = false,
+                    showFullDate = showDateOnCards,
                     onCardClick = { onSaleClick(item) },
                     onQuickSettleClick = { onQuickSettleClick(item) },
                 )
@@ -288,6 +311,8 @@ fun DailySalesScreen(
 
 @Composable
 private fun DailyHeroSummaryCard(
+    selectedPeriod: DailySalesPeriod,
+    onSelectPeriod: (DailySalesPeriod) -> Unit,
     totalSales: Double,
     totalCollected: Double,
     totalRemaining: Double,
@@ -295,6 +320,13 @@ private fun DailyHeroSummaryCard(
     progress: Float,
 ) {
     val ledgerColors = LocalLedgerColors.current
+    val periodLabel = when (selectedPeriod) {
+        DailySalesPeriod.TODAY -> stringResource(R.string.period_today)
+        DailySalesPeriod.YESTERDAY -> stringResource(R.string.period_yesterday)
+        DailySalesPeriod.WEEK -> "آخر 7 أيام"
+        DailySalesPeriod.MONTH -> "هذا الشهر"
+        DailySalesPeriod.CUSTOM_DAY -> "يوم محدد"
+    }
 
     Box(
         modifier = Modifier
@@ -310,6 +342,55 @@ private fun DailyHeroSummaryCard(
         Column(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            // Built-in Quick Period Switcher (اليوم | أمس | أسبوع | شهر)
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = Color.White.copy(alpha = 0.13f),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val quickPeriods = listOf(
+                        DailySalesPeriod.TODAY to stringResource(R.string.period_today),
+                        DailySalesPeriod.YESTERDAY to stringResource(R.string.period_yesterday),
+                        DailySalesPeriod.WEEK to stringResource(R.string.period_week),
+                        DailySalesPeriod.MONTH to stringResource(R.string.period_month),
+                    )
+                    quickPeriods.forEach { (period, label) ->
+                        val isSelected = selectedPeriod == period
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .minimumInteractiveComponentSize()
+                                .clip(RoundedCornerShape(11.dp))
+                                .clickable { onSelectPeriod(period) }
+                                .testTag("hero_period_${period.name.lowercase()}"),
+                            shape = RoundedCornerShape(11.dp),
+                            color = if (isSelected) Color.White else Color.Transparent,
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                            ) {
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelLarge.copy(
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    ),
+                                    color = if (isSelected) ledgerColors.heroEnd else Color.White.copy(alpha = 0.9f),
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -317,9 +398,9 @@ private fun DailyHeroSummaryCard(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        text = stringResource(R.string.total_sales),
+                        text = "${stringResource(R.string.total_sales)} • $periodLabel",
                         style = MaterialTheme.typography.labelLarge,
-                        color = Color.White.copy(alpha = 0.82f),
+                        color = Color.White.copy(alpha = 0.85f),
                     )
                     Text(
                         text = LedgerFormatters.formatShekel(totalSales),

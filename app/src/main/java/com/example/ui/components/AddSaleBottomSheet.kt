@@ -5,6 +5,8 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -23,10 +26,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Clear
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.PersonAdd
+import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -35,7 +38,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -47,21 +49,24 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.data.PaymentStatus
+import com.example.ui.CustomerPurchaseSummary
 import com.example.ui.theme.LocalLedgerColors
 import com.example.util.LedgerFormatters
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AddSaleBottomSheet(
-    recentCustomers: List<String>,
+    knownCustomers: List<CustomerPurchaseSummary>,
     selectedDayMillis: Long,
     initialCustomerName: String = "",
     onDismiss: () -> Unit,
@@ -88,10 +93,27 @@ fun AddSaleBottomSheet(
     val parsedTotal = totalAmountText.replace(",", ".").toDoubleOrNull()
     val parsedPartial = partialPaymentText.replace(",", ".").toDoubleOrNull()
 
-    val matchingSuggestions = remember(customerName, recentCustomers) {
-        val q = customerName.trim()
-        if (q.isEmpty()) recentCustomers.take(5)
-        else recentCustomers.filter { it.contains(q, ignoreCase = true) && !it.equals(q, ignoreCase = true) }.take(4)
+    val normalizedQuery = remember(customerName) { LedgerFormatters.normalizeArabicText(customerName) }
+
+    val registeredMatch = remember(normalizedQuery, knownCustomers) {
+        if (normalizedQuery.isEmpty()) null
+        else knownCustomers.find { LedgerFormatters.normalizeArabicText(it.customerName) == normalizedQuery }
+    }
+
+    val matchingSuggestions = remember(normalizedQuery, customerName, knownCustomers, registeredMatch) {
+        if (normalizedQuery.isEmpty()) {
+            knownCustomers.take(6)
+        } else {
+            knownCustomers
+                .filter { customer ->
+                    customer != registeredMatch &&
+                        LedgerFormatters.matchesAllNameParts(customer.customerName, customerName)
+                }
+                .sortedByDescending {
+                    LedgerFormatters.normalizeArabicText(it.customerName).startsWith(normalizedQuery)
+                }
+                .take(6)
+        }
     }
 
     ModalBottomSheet(
@@ -173,25 +195,175 @@ fun AddSaleBottomSheet(
                 shape = MaterialTheme.shapes.medium,
             )
 
-            // Recent Customer Quick Chips
+            // Instant Customer Recognition Card (Registered vs New)
+            AnimatedVisibility(
+                visible = normalizedQuery.isNotEmpty(),
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut(),
+            ) {
+                if (registeredMatch != null) {
+                    val hasDebt = registeredMatch.totalRemaining > 0.0
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("registered_customer_badge"),
+                        shape = MaterialTheme.shapes.medium,
+                        color = if (hasDebt) ledgerColors.partialContainer else ledgerColors.paidContainer,
+                        border = BorderStroke(
+                            width = 1.dp,
+                            color = if (hasDebt) {
+                                ledgerColors.partial.copy(alpha = 0.4f)
+                            } else {
+                                ledgerColors.paid.copy(alpha = 0.4f)
+                            },
+                        ),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.VerifiedUser,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = if (hasDebt) ledgerColors.onPartialContainer else ledgerColors.onPaidContainer,
+                                    )
+                                    Text(
+                                        text = "زبون مسجل مسبقاً (${registeredMatch.customerName})",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = if (hasDebt) ledgerColors.onPartialContainer else ledgerColors.onPaidContainer,
+                                    )
+                                }
+                                Text(
+                                    text = "${registeredMatch.purchasesCount} عملية",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (hasDebt) ledgerColors.onPartialContainer else ledgerColors.onPaidContainer,
+                                )
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text(
+                                    text = "إجمالي مشترياته: ${LedgerFormatters.formatShekel(registeredMatch.totalPurchases)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (hasDebt) ledgerColors.onPartialContainer else ledgerColors.onPaidContainer,
+                                )
+                                Text(
+                                    text = if (hasDebt) {
+                                        "عليه ذمة: ${LedgerFormatters.formatShekel(registeredMatch.totalRemaining)}"
+                                    } else {
+                                        "لا توجد ذمم"
+                                    },
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = if (hasDebt) ledgerColors.unpaid else ledgerColors.onPaidContainer,
+                                )
+                            }
+
+                            // If user typed slightly different spelling (e.g., احمد vs أحمد), offer 1-tap canonical sync
+                            if (customerName.trim() != registeredMatch.customerName) {
+                                TextButton(
+                                    onClick = { customerName = registeredMatch.customerName },
+                                    modifier = Modifier.align(Alignment.End),
+                                ) {
+                                    Text("استخدام الاسم المسجل: ${registeredMatch.customerName}")
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("new_customer_badge"),
+                        shape = MaterialTheme.shapes.small,
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.PersonAdd,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(
+                                text = if (matchingSuggestions.isNotEmpty()) {
+                                    "زبون جديد — أو اختر من الزبائن المسجلين أدناه"
+                                } else {
+                                    "زبون جديد — سيتم إضافته لقائمة الزبائن"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Smart Customer Autocomplete Suggestions with Unpaid Debt Hint
             if (matchingSuggestions.isNotEmpty()) {
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     matchingSuggestions.forEach { suggestion ->
-                        SuggestionChip(
-                            onClick = {
-                                customerName = suggestion
-                                customerError = null
-                            },
-                            label = {
+                        val hasDebt = suggestion.totalRemaining > 0.0
+                        Surface(
+                            modifier = Modifier
+                                .clip(MaterialTheme.shapes.small)
+                                .clickable {
+                                    customerName = suggestion.customerName
+                                    customerError = null
+                                }
+                                .testTag("customer_suggestion_${suggestion.customerName}"),
+                            shape = MaterialTheme.shapes.small,
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                            border = BorderStroke(
+                                1.dp,
+                                if (hasDebt) {
+                                    ledgerColors.partial.copy(alpha = 0.4f)
+                                } else {
+                                    MaterialTheme.colorScheme.outlineVariant
+                                },
+                            ),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
                                 Text(
-                                    text = suggestion,
-                                    style = MaterialTheme.typography.labelMedium,
+                                    text = suggestion.customerName,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurface,
                                 )
-                            },
-                        )
+                                if (hasDebt) {
+                                    Text(
+                                        text = "(${LedgerFormatters.formatShekel(suggestion.totalRemaining)})",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = ledgerColors.partial,
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -223,6 +395,15 @@ fun AddSaleBottomSheet(
                     .fillMaxWidth()
                     .testTag("total_amount_input"),
                 shape = MaterialTheme.shapes.medium,
+            )
+
+            QuickAmountSelector(
+                currentText = totalAmountText,
+                onAmountChange = {
+                    totalAmountText = it
+                    amountError = null
+                },
+                testTagPrefix = "sale_total_quick",
             )
 
             // 3. Payment Status Selector
@@ -306,6 +487,16 @@ fun AddSaleBottomSheet(
                             .fillMaxWidth()
                             .testTag("partial_payment_input"),
                         shape = MaterialTheme.shapes.medium,
+                    )
+
+                    QuickAmountSelector(
+                        currentText = partialPaymentText,
+                        onAmountChange = {
+                            partialPaymentText = it
+                            partialError = null
+                        },
+                        maxAmount = parsedTotal?.takeIf { it > 0.0 },
+                        testTagPrefix = "sale_partial_quick",
                     )
 
                     if (parsedTotal != null && parsedTotal > 0.0) {

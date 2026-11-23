@@ -136,4 +136,27 @@ object LedgerFormatters {
         }
         return cal.timeInMillis
     }
+
+    private val arabicDiacriticsRegex = Regex("[\u064B-\u065F\u0670]")
+    private val whitespaceRegex = Regex("\\s+")
+
+    fun normalizeArabicText(text: String): String {
+        return arabicDiacriticsRegex.replace(text.trim(), "")
+            .lowercase(Locale.getDefault())
+            .replace('أ', 'ا')
+            .replace('إ', 'ا')
+            .replace('آ', 'ا')
+            .replace('ى', 'ي')
+            .replace('ة', 'ه')
+            .replace(whitespaceRegex, " ")
+            .trim()
+    }
+
+    fun matchesAllNameParts(target: String, query: String): Boolean {
+        val normQuery = normalizeArabicText(query)
+        if (normQuery.isEmpty()) return true
+        val normTarget = normalizeArabicText(target)
+        val tokens = normQuery.split(' ').filter { it.isNotEmpty() }
+        return tokens.all { token -> normTarget.contains(token) }
+    }
 }

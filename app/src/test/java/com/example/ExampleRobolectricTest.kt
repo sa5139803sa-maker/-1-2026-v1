@@ -29,7 +29,7 @@ class ExampleRobolectricTest {
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
             .allowMainThreadQueries()
             .build()
-        repository = SalesRepository(db.salesDao())
+        repository = SalesRepository(db.salesDao(), db.expenseDao())
     }
 
     @After

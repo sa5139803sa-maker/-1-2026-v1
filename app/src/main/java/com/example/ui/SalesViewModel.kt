@@ -5,6 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.AppDatabase
 import com.example.data.AppThemeMode
+import com.example.data.ExpenseCategory
+import com.example.data.ExpenseEntity
 import com.example.data.PaymentStatus
 import com.example.data.SaleWithPayments
 import com.example.data.SalesRepository
@@ -29,7 +31,23 @@ enum class AppTab {
     DAILY,
     UNPAID,
     CUSTOMERS,
+    EXPENSES,
     ANALYTICS,
+}
+
+enum class ExpenseRange {
+    DAY,
+    THIS_MONTH,
+    ALL_TIME,
+    CUSTOM,
+}
+
+enum class DailySalesPeriod {
+    TODAY,
+    YESTERDAY,
+    WEEK,
+    MONTH,
+    CUSTOM_DAY,
 }
 
 enum class DailyFilter {
@@ -106,24 +124,49 @@ data class ChartBucket(
     val total: Double get() = collected + remaining
 }
 
+data class ExpenseCategoryBreakdown(
+    val category: ExpenseCategory,
+    val amount: Double,
+    val count: Int,
+    val share: Float,
+)
+
+data class ExpensesSummary(
+    val totalExpenses: Double = 0.0,
+    val expensesCount: Int = 0,
+    val periodCollectedSales: Double = 0.0,
+    val netCash: Double = 0.0,
+    val categoryBreakdown: List<ExpenseCategoryBreakdown> = emptyList(),
+)
+
 data class AnalyticsSummary(
     val totalSales: Double = 0.0,
     val totalCollected: Double = 0.0,
     val totalRemaining: Double = 0.0,
+    val totalExpenses: Double = 0.0,
+    val expensesCount: Int = 0,
     val salesCount: Int = 0,
     val paidCount: Int = 0,
     val partialCount: Int = 0,
     val unpaidCount: Int = 0,
     val chartBuckets: List<ChartBucket> = emptyList(),
     val topIndebtedCustomers: List<CustomerDebtSummary> = emptyList(),
+    val expenseCategoryBreakdown: List<ExpenseCategoryBreakdown> = emptyList(),
 ) {
     val collectionRate: Float
         get() = if (totalSales <= 0.0) 0f else (totalCollected / totalSales).toFloat().coerceIn(0f, 1f)
+
+    val netCollectedProfit: Double
+        get() = totalCollected - totalExpenses
+
+    val netSalesProfit: Double
+        get() = totalSales - totalExpenses
 }
 
 data class SalesUiState(
     val isLoading: Boolean = true,
     val selectedTab: AppTab = AppTab.DAILY,
+    val dailySalesPeriod: DailySalesPeriod = DailySalesPeriod.TODAY,
     val selectedDayMillis: Long = LedgerFormatters.startOfDayMillis(System.currentTimeMillis()),
     val isTodaySelected: Boolean = true,
     val dailyFilter: DailyFilter = DailyFilter.ALL,
@@ -145,11 +188,25 @@ data class SalesUiState(
     val totalCustomersCount: Int = 0,
     val allCustomersTotalPurchases: Double = 0.0,
     val topBuyer: CustomerPurchaseSummary? = null,
+    val expenseRange: ExpenseRange = ExpenseRange.THIS_MONTH,
+    val expenseDayMillis: Long = LedgerFormatters.startOfDayMillis(System.currentTimeMillis()),
+    val isExpenseTodaySelected: Boolean = true,
+    val expenseCustomStartMillis: Long = LedgerFormatters.startOfMonthMillis(System.currentTimeMillis()),
+    val expenseCustomEndMillis: Long = LedgerFormatters.startOfDayMillis(System.currentTimeMillis()),
+    val expenseCategoryFilter: ExpenseCategory? = null,
+    val expenseSearchQuery: String = "",
+    val expensesSummary: ExpensesSummary = ExpensesSummary(),
+    val expensesList: List<ExpenseEntity> = emptyList(),
+    val allRangeExpensesCount: Int = 0,
+    val recentExpenseTitles: List<String> = emptyList(),
+    val selectedExpense: ExpenseEntity? = null,
+    val isAddExpenseSheetVisible: Boolean = false,
     val analyticsRange: AnalyticsRange = AnalyticsRange.LAST_7_DAYS,
     val analyticsCustomStartMillis: Long = LedgerFormatters.startOfMonthMillis(System.currentTimeMillis()),
     val analyticsCustomEndMillis: Long = LedgerFormatters.startOfDayMillis(System.currentTimeMillis()),
     val analyticsSummary: AnalyticsSummary = AnalyticsSummary(),
     val recentCustomers: List<String> = emptyList(),
+    val allCustomerSummaries: List<CustomerPurchaseSummary> = emptyList(),
     val selectedSale: SaleWithPayments? = null,
     val selectedCustomerDebt: CustomerDebtSummary? = null,
     val selectedCustomerPurchase: CustomerPurchaseSummary? = null,
@@ -159,6 +216,7 @@ data class SalesUiState(
 
 private data class FilterInputs(
     val selectedTab: AppTab = AppTab.DAILY,
+    val dailySalesPeriod: DailySalesPeriod = DailySalesPeriod.TODAY,
     val selectedDayMillis: Long = LedgerFormatters.startOfDayMillis(System.currentTimeMillis()),
     val dailyFilter: DailyFilter = DailyFilter.ALL,
     val dailySearchQuery: String = "",
@@ -167,6 +225,14 @@ private data class FilterInputs(
     val unpaidSearchQuery: String = "",
     val customersSortOrder: CustomerSortOrder = CustomerSortOrder.MOST_PURCHASES,
     val customersSearchQuery: String = "",
+    val expenseRange: ExpenseRange = ExpenseRange.THIS_MONTH,
+    val expenseDayMillis: Long = LedgerFormatters.startOfDayMillis(System.currentTimeMillis()),
+    val expenseCustomStartMillis: Long = LedgerFormatters.startOfMonthMillis(System.currentTimeMillis()),
+    val expenseCustomEndMillis: Long = LedgerFormatters.startOfDayMillis(System.currentTimeMillis()),
+    val expenseCategoryFilter: ExpenseCategory? = null,
+    val expenseSearchQuery: String = "",
+    val selectedExpenseId: Long? = null,
+    val isAddExpenseSheetVisible: Boolean = false,
     val analyticsRange: AnalyticsRange = AnalyticsRange.LAST_7_DAYS,
     val analyticsCustomStartMillis: Long = LedgerFormatters.startOfMonthMillis(System.currentTimeMillis()),
     val analyticsCustomEndMillis: Long = LedgerFormatters.startOfDayMillis(System.currentTimeMillis()),
@@ -179,9 +245,13 @@ private data class FilterInputs(
 
 class SalesViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository: SalesRepository = SalesRepository(
-        AppDatabase.getInstance(application).salesDao()
-    )
+    private val repository: SalesRepository = run {
+        val db = AppDatabase.getInstance(application)
+        SalesRepository(
+            salesDao = db.salesDao(),
+            expenseDao = db.expenseDao(),
+        )
+    }
     private val themePreferences: ThemePreferences = ThemePreferences(application)
 
     private val filterInputs = MutableStateFlow(FilterInputs())
@@ -198,11 +268,15 @@ class SalesViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<SalesUiState> = combine(
         repository.observeAllSales(),
         repository.observeRecentCustomerNames(),
+        repository.observeAllExpenses(),
+        repository.observeRecentExpenseTitles(),
         filterInputs,
-    ) { allSales, recentCustomers, inputs ->
+    ) { allSales, recentCustomers, allExpenses, recentExpenseTitles, inputs ->
         buildUiState(
             allSales = allSales,
             recentCustomers = recentCustomers,
+            allExpenses = allExpenses,
+            recentExpenseTitles = recentExpenseTitles,
             inputs = inputs,
         )
     }.stateIn(
@@ -221,29 +295,59 @@ class SalesViewModel(application: Application) : AndroidViewModel(application) {
         filterInputs.value = filterInputs.value.copy(selectedTab = tab)
     }
 
+    fun setDailySalesPeriod(period: DailySalesPeriod) {
+        val todayStart = LedgerFormatters.startOfDayMillis(System.currentTimeMillis())
+        val targetDay = when (period) {
+            DailySalesPeriod.YESTERDAY -> LedgerFormatters.addDays(todayStart, -1)
+            else -> todayStart
+        }
+        filterInputs.value = filterInputs.value.copy(
+            dailySalesPeriod = period,
+            selectedDayMillis = targetDay,
+        )
+    }
+
+    private fun periodForDay(dayMillis: Long): DailySalesPeriod {
+        val todayStart = LedgerFormatters.startOfDayMillis(System.currentTimeMillis())
+        val yesterdayStart = LedgerFormatters.addDays(todayStart, -1)
+        return when {
+            LedgerFormatters.isSameDay(dayMillis, todayStart) -> DailySalesPeriod.TODAY
+            LedgerFormatters.isSameDay(dayMillis, yesterdayStart) -> DailySalesPeriod.YESTERDAY
+            else -> DailySalesPeriod.CUSTOM_DAY
+        }
+    }
+
     fun previousDay() {
         val current = filterInputs.value.selectedDayMillis
+        val nextDay = LedgerFormatters.addDays(current, -1)
         filterInputs.value = filterInputs.value.copy(
-            selectedDayMillis = LedgerFormatters.addDays(current, -1),
+            dailySalesPeriod = periodForDay(nextDay),
+            selectedDayMillis = nextDay,
         )
     }
 
     fun nextDay() {
         val current = filterInputs.value.selectedDayMillis
+        val nextDay = LedgerFormatters.addDays(current, 1)
         filterInputs.value = filterInputs.value.copy(
-            selectedDayMillis = LedgerFormatters.addDays(current, 1),
+            dailySalesPeriod = periodForDay(nextDay),
+            selectedDayMillis = nextDay,
         )
     }
 
     fun goToToday() {
+        val todayStart = LedgerFormatters.startOfDayMillis(System.currentTimeMillis())
         filterInputs.value = filterInputs.value.copy(
-            selectedDayMillis = LedgerFormatters.startOfDayMillis(System.currentTimeMillis()),
+            dailySalesPeriod = DailySalesPeriod.TODAY,
+            selectedDayMillis = todayStart,
         )
     }
 
     fun selectDay(dayMillis: Long) {
+        val start = LedgerFormatters.startOfDayMillis(dayMillis)
         filterInputs.value = filterInputs.value.copy(
-            selectedDayMillis = LedgerFormatters.startOfDayMillis(dayMillis),
+            dailySalesPeriod = periodForDay(start),
+            selectedDayMillis = start,
         )
     }
 
@@ -419,6 +523,30 @@ class SalesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun recordCustomerAccountPayment(
+        customerName: String,
+        sales: List<SaleWithPayments>,
+        amount: Double,
+    ) {
+        viewModelScope.launch {
+            val (count, applied) = repository.distributePaymentAcrossCustomerSales(
+                sales = sales,
+                paymentAmount = amount,
+            )
+            if (applied > 0.0) {
+                val totalRemainingBefore = sales.sumOf { it.remainingAmount }
+                val isFullySettled = (totalRemainingBefore - applied) < 0.01
+                if (isFullySettled) {
+                    _events.emit("تم تسديد جميع ذمم $customerName بالكامل")
+                } else {
+                    _events.emit(
+                        "تم توزيع ${LedgerFormatters.formatShekel(applied)} على $count فاتورة من الأقدم للأحدث"
+                    )
+                }
+            }
+        }
+    }
+
     fun deletePayment(paymentId: Long) {
         viewModelScope.launch {
             repository.deletePayment(paymentId)
@@ -434,28 +562,163 @@ class SalesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // Expense Filters & CRUD Actions
+    fun setExpenseRange(range: ExpenseRange) {
+        filterInputs.value = filterInputs.value.copy(expenseRange = range)
+    }
+
+    fun previousExpenseDay() {
+        val current = filterInputs.value.expenseDayMillis
+        filterInputs.value = filterInputs.value.copy(
+            expenseRange = ExpenseRange.DAY,
+            expenseDayMillis = LedgerFormatters.addDays(current, -1),
+        )
+    }
+
+    fun nextExpenseDay() {
+        val current = filterInputs.value.expenseDayMillis
+        filterInputs.value = filterInputs.value.copy(
+            expenseRange = ExpenseRange.DAY,
+            expenseDayMillis = LedgerFormatters.addDays(current, 1),
+        )
+    }
+
+    fun goToExpenseToday() {
+        filterInputs.value = filterInputs.value.copy(
+            expenseRange = ExpenseRange.DAY,
+            expenseDayMillis = LedgerFormatters.startOfDayMillis(System.currentTimeMillis()),
+        )
+    }
+
+    fun selectExpenseDay(dayMillis: Long) {
+        filterInputs.value = filterInputs.value.copy(
+            expenseRange = ExpenseRange.DAY,
+            expenseDayMillis = LedgerFormatters.startOfDayMillis(dayMillis),
+        )
+    }
+
+    fun setExpenseCustomStart(startMillis: Long) {
+        val start = LedgerFormatters.startOfDayMillis(startMillis)
+        val currentEnd = filterInputs.value.expenseCustomEndMillis
+        filterInputs.value = filterInputs.value.copy(
+            expenseRange = ExpenseRange.CUSTOM,
+            expenseCustomStartMillis = minOf(start, currentEnd),
+            expenseCustomEndMillis = maxOf(start, currentEnd),
+        )
+    }
+
+    fun setExpenseCustomEnd(endMillis: Long) {
+        val end = LedgerFormatters.startOfDayMillis(endMillis)
+        val currentStart = filterInputs.value.expenseCustomStartMillis
+        filterInputs.value = filterInputs.value.copy(
+            expenseRange = ExpenseRange.CUSTOM,
+            expenseCustomStartMillis = minOf(currentStart, end),
+            expenseCustomEndMillis = maxOf(currentStart, end),
+        )
+    }
+
+    fun setExpenseCategoryFilter(category: ExpenseCategory?) {
+        filterInputs.value = filterInputs.value.copy(expenseCategoryFilter = category)
+    }
+
+    fun setExpenseSearchQuery(query: String) {
+        filterInputs.value = filterInputs.value.copy(expenseSearchQuery = query)
+    }
+
+    fun openAddExpenseSheet() {
+        filterInputs.value = filterInputs.value.copy(isAddExpenseSheetVisible = true)
+    }
+
+    fun closeAddExpenseSheet() {
+        filterInputs.value = filterInputs.value.copy(isAddExpenseSheetVisible = false)
+    }
+
+    fun openExpenseDetail(expenseId: Long) {
+        filterInputs.value = filterInputs.value.copy(selectedExpenseId = expenseId)
+    }
+
+    fun closeExpenseDetail() {
+        filterInputs.value = filterInputs.value.copy(selectedExpenseId = null)
+    }
+
+    fun addExpense(
+        title: String,
+        category: ExpenseCategory,
+        amount: Double,
+        note: String,
+        dayStartMillis: Long,
+    ) {
+        viewModelScope.launch {
+            val timestamp = LedgerFormatters.combineDayWithCurrentTime(dayStartMillis)
+            repository.addExpense(
+                title = title,
+                category = category,
+                amount = amount,
+                note = note,
+                createdAtMillis = timestamp,
+            )
+            closeAddExpenseSheet()
+            _events.emit("تم تسجيل المصروف بنجاح")
+        }
+    }
+
+    fun updateExpense(
+        existing: ExpenseEntity,
+        title: String,
+        category: ExpenseCategory,
+        amount: Double,
+        note: String,
+    ) {
+        viewModelScope.launch {
+            repository.updateExpense(
+                existing = existing,
+                title = title,
+                category = category,
+                amount = amount,
+                note = note,
+            )
+            _events.emit("تم تحديث المصروف")
+        }
+    }
+
+    fun deleteExpense(expenseId: Long) {
+        viewModelScope.launch {
+            repository.deleteExpense(expenseId)
+            closeExpenseDetail()
+            _events.emit("تم حذف المصروف")
+        }
+    }
+
     private fun buildUiState(
         allSales: List<SaleWithPayments>,
         recentCustomers: List<String>,
+        allExpenses: List<ExpenseEntity>,
+        recentExpenseTitles: List<String>,
         inputs: FilterInputs,
     ): SalesUiState {
-        val todayStart = LedgerFormatters.startOfDayMillis(System.currentTimeMillis())
-        val isTodaySelected = LedgerFormatters.isSameDay(inputs.selectedDayMillis, todayStart)
+        val now = System.currentTimeMillis()
+        val todayStart = LedgerFormatters.startOfDayMillis(now)
+        val isTodaySelected = inputs.dailySalesPeriod == DailySalesPeriod.TODAY &&
+            LedgerFormatters.isSameDay(inputs.selectedDayMillis, todayStart)
 
-        // 1. Daily Sales computation
+        // 1. Daily / Quick-Period Sales computation
         val dayStart = LedgerFormatters.startOfDayMillis(inputs.selectedDayMillis)
-        val dayEnd = LedgerFormatters.endOfDayMillis(inputs.selectedDayMillis)
-        val salesForSelectedDay = allSales.filter {
-            it.sale.createdAtMillis in dayStart..dayEnd
+        val (periodStart, periodEnd) = computeDailyPeriodBounds(
+            period = inputs.dailySalesPeriod,
+            selectedDayMillis = dayStart,
+            nowMillis = now,
+        )
+        val salesForSelectedPeriod = allSales.filter {
+            it.sale.createdAtMillis in periodStart..periodEnd
         }
         val dailySummary = DailySummary(
-            totalSales = salesForSelectedDay.sumOf { it.sale.totalAmount },
-            totalCollected = salesForSelectedDay.sumOf { it.paidAmount },
-            totalRemaining = salesForSelectedDay.sumOf { it.remainingAmount },
-            salesCount = salesForSelectedDay.size,
+            totalSales = salesForSelectedPeriod.sumOf { it.sale.totalAmount },
+            totalCollected = salesForSelectedPeriod.sumOf { it.paidAmount },
+            totalRemaining = salesForSelectedPeriod.sumOf { it.remainingAmount },
+            salesCount = salesForSelectedPeriod.size,
         )
         val dailyQuery = inputs.dailySearchQuery.trim()
-        val filteredDailySales = salesForSelectedDay.filter { item ->
+        val filteredDailySales = salesForSelectedPeriod.filter { item ->
             val matchesFilter = when (inputs.dailyFilter) {
                 DailyFilter.ALL -> true
                 DailyFilter.PAID -> item.status == PaymentStatus.PAID
@@ -463,8 +726,8 @@ class SalesViewModel(application: Application) : AndroidViewModel(application) {
                 DailyFilter.UNPAID -> item.status == PaymentStatus.UNPAID
             }
             val matchesSearch = dailyQuery.isEmpty() ||
-                item.sale.customerName.contains(dailyQuery, ignoreCase = true) ||
-                item.sale.note.contains(dailyQuery, ignoreCase = true)
+                LedgerFormatters.matchesAllNameParts(item.sale.customerName, dailyQuery) ||
+                LedgerFormatters.matchesAllNameParts(item.sale.note, dailyQuery)
             matchesFilter && matchesSearch
         }
 
@@ -477,8 +740,8 @@ class SalesViewModel(application: Application) : AndroidViewModel(application) {
         val filteredUnpaidSales = allUnpaid
             .filter { item ->
                 unpaidQuery.isEmpty() ||
-                    item.sale.customerName.contains(unpaidQuery, ignoreCase = true) ||
-                    item.sale.note.contains(unpaidQuery, ignoreCase = true)
+                    LedgerFormatters.matchesAllNameParts(item.sale.customerName, unpaidQuery) ||
+                    LedgerFormatters.matchesAllNameParts(item.sale.note, unpaidQuery)
             }
             .let { list ->
                 when (inputs.unpaidSortOrder) {
@@ -491,7 +754,7 @@ class SalesViewModel(application: Application) : AndroidViewModel(application) {
         val filteredCustomerDebts = allCustomerDebts
             .filter { summary ->
                 unpaidQuery.isEmpty() ||
-                    summary.customerName.contains(unpaidQuery, ignoreCase = true)
+                    LedgerFormatters.matchesAllNameParts(summary.customerName, unpaidQuery)
             }
             .let { list ->
                 when (inputs.unpaidSortOrder) {
@@ -507,7 +770,7 @@ class SalesViewModel(application: Application) : AndroidViewModel(application) {
         val filteredCustomerPurchases = allCustomerPurchases
             .filter { summary ->
                 customersQuery.isEmpty() ||
-                    summary.customerName.contains(customersQuery, ignoreCase = true)
+                    LedgerFormatters.matchesAllNameParts(summary.customerName, customersQuery)
             }
             .let { list ->
                 when (inputs.customersSortOrder) {
@@ -518,9 +781,50 @@ class SalesViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-        // 4. Analytics computation
+        // 4. Expenses computation
+        val expDayStart = LedgerFormatters.startOfDayMillis(inputs.expenseDayMillis)
+        val expDayEnd = LedgerFormatters.endOfDayMillis(inputs.expenseDayMillis)
+        val expMonthStart = LedgerFormatters.startOfMonthMillis(now)
+        val expCustomStart = LedgerFormatters.startOfDayMillis(minOf(inputs.expenseCustomStartMillis, inputs.expenseCustomEndMillis))
+        val expCustomEnd = LedgerFormatters.endOfDayMillis(maxOf(inputs.expenseCustomStartMillis, inputs.expenseCustomEndMillis))
+
+        val rangeExpenses = when (inputs.expenseRange) {
+            ExpenseRange.DAY -> allExpenses.filter { it.createdAtMillis in expDayStart..expDayEnd }
+            ExpenseRange.THIS_MONTH -> allExpenses.filter { it.createdAtMillis >= expMonthStart }
+            ExpenseRange.ALL_TIME -> allExpenses
+            ExpenseRange.CUSTOM -> allExpenses.filter { it.createdAtMillis in expCustomStart..expCustomEnd }
+        }
+        val rangeSalesForExpenses = when (inputs.expenseRange) {
+            ExpenseRange.DAY -> allSales.filter { it.sale.createdAtMillis in expDayStart..expDayEnd }
+            ExpenseRange.THIS_MONTH -> allSales.filter { it.sale.createdAtMillis >= expMonthStart }
+            ExpenseRange.ALL_TIME -> allSales
+            ExpenseRange.CUSTOM -> allSales.filter { it.sale.createdAtMillis in expCustomStart..expCustomEnd }
+        }
+        val totalPeriodExpenses = rangeExpenses.sumOf { it.amount }
+        val periodCollectedSales = rangeSalesForExpenses.sumOf { it.paidAmount }
+        val expensesSummary = ExpensesSummary(
+            totalExpenses = totalPeriodExpenses,
+            expensesCount = rangeExpenses.size,
+            periodCollectedSales = periodCollectedSales,
+            netCash = periodCollectedSales - totalPeriodExpenses,
+            categoryBreakdown = buildExpenseCategoryBreakdown(rangeExpenses),
+        )
+
+        val expQuery = inputs.expenseSearchQuery.trim()
+        val filteredExpenses = rangeExpenses.filter { exp ->
+            val matchesCat = inputs.expenseCategoryFilter == null ||
+                exp.categoryEnum == inputs.expenseCategoryFilter
+            val matchesSearch = expQuery.isEmpty() ||
+                LedgerFormatters.matchesAllNameParts(exp.title, expQuery) ||
+                LedgerFormatters.matchesAllNameParts(exp.note, expQuery) ||
+                LedgerFormatters.matchesAllNameParts(exp.categoryEnum.labelAr, expQuery)
+            matchesCat && matchesSearch
+        }
+
+        // 5. Analytics computation
         val analyticsSummary = buildAnalyticsSummary(
             allSales = allSales,
+            allExpenses = allExpenses,
             allCustomerDebts = allCustomerDebts,
             range = inputs.analyticsRange,
             customStartMillis = inputs.analyticsCustomStartMillis,
@@ -529,6 +833,9 @@ class SalesViewModel(application: Application) : AndroidViewModel(application) {
 
         val selectedSale = inputs.selectedSaleId?.let { id ->
             allSales.find { it.sale.id == id }
+        }
+        val selectedExpense = inputs.selectedExpenseId?.let { id ->
+            allExpenses.find { it.id == id }
         }
         val selectedCustomerDebt = inputs.selectedCustomerName?.let { name ->
             allCustomerDebts.find { it.customerName.equals(name, ignoreCase = true) }
@@ -540,13 +847,14 @@ class SalesViewModel(application: Application) : AndroidViewModel(application) {
         return SalesUiState(
             isLoading = false,
             selectedTab = inputs.selectedTab,
+            dailySalesPeriod = inputs.dailySalesPeriod,
             selectedDayMillis = dayStart,
             isTodaySelected = isTodaySelected,
             dailyFilter = inputs.dailyFilter,
             dailySearchQuery = inputs.dailySearchQuery,
             dailySummary = dailySummary,
             dailySales = filteredDailySales,
-            allDaySalesCount = salesForSelectedDay.size,
+            allDaySalesCount = salesForSelectedPeriod.size,
             unpaidViewMode = inputs.unpaidViewMode,
             unpaidSortOrder = inputs.unpaidSortOrder,
             unpaidSearchQuery = inputs.unpaidSearchQuery,
@@ -561,11 +869,25 @@ class SalesViewModel(application: Application) : AndroidViewModel(application) {
             totalCustomersCount = allCustomerPurchases.size,
             allCustomersTotalPurchases = allCustomerPurchases.sumOf { it.totalPurchases },
             topBuyer = allCustomerPurchases.firstOrNull(),
+            expenseRange = inputs.expenseRange,
+            expenseDayMillis = expDayStart,
+            isExpenseTodaySelected = LedgerFormatters.isSameDay(expDayStart, todayStart),
+            expenseCustomStartMillis = inputs.expenseCustomStartMillis,
+            expenseCustomEndMillis = inputs.expenseCustomEndMillis,
+            expenseCategoryFilter = inputs.expenseCategoryFilter,
+            expenseSearchQuery = inputs.expenseSearchQuery,
+            expensesSummary = expensesSummary,
+            expensesList = filteredExpenses,
+            allRangeExpensesCount = rangeExpenses.size,
+            recentExpenseTitles = recentExpenseTitles.distinct().take(8),
+            selectedExpense = selectedExpense,
+            isAddExpenseSheetVisible = inputs.isAddExpenseSheetVisible,
             analyticsRange = inputs.analyticsRange,
             analyticsCustomStartMillis = inputs.analyticsCustomStartMillis,
             analyticsCustomEndMillis = inputs.analyticsCustomEndMillis,
             analyticsSummary = analyticsSummary,
             recentCustomers = recentCustomers.distinct().take(8),
+            allCustomerSummaries = allCustomerPurchases.sortedByDescending { it.lastPurchaseMillis },
             selectedSale = selectedSale,
             selectedCustomerDebt = selectedCustomerDebt,
             selectedCustomerPurchase = selectedCustomerPurchase,
@@ -616,6 +938,7 @@ class SalesViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun buildAnalyticsSummary(
         allSales: List<SaleWithPayments>,
+        allExpenses: List<ExpenseEntity>,
         allCustomerDebts: List<CustomerDebtSummary>,
         range: AnalyticsRange,
         customStartMillis: Long,
@@ -642,6 +965,21 @@ class SalesViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
+        val scopedExpenses = when (range) {
+            AnalyticsRange.LAST_7_DAYS -> {
+                val start7 = LedgerFormatters.addDays(todayStart, -6)
+                allExpenses.filter { it.createdAtMillis >= start7 }
+            }
+            AnalyticsRange.THIS_MONTH -> {
+                val monthStart = LedgerFormatters.startOfMonthMillis(now)
+                allExpenses.filter { it.createdAtMillis >= monthStart }
+            }
+            AnalyticsRange.ALL_TIME -> allExpenses
+            AnalyticsRange.CUSTOM -> {
+                allExpenses.filter { it.createdAtMillis in customStart..customEnd }
+            }
+        }
+
         val buckets = when (range) {
             AnalyticsRange.LAST_7_DAYS -> buildLast7DaysBuckets(scopedSales, todayStart)
             AnalyticsRange.THIS_MONTH -> buildThisMonthBuckets(scopedSales, now)
@@ -653,12 +991,15 @@ class SalesViewModel(application: Application) : AndroidViewModel(application) {
             totalSales = scopedSales.sumOf { it.sale.totalAmount },
             totalCollected = scopedSales.sumOf { it.paidAmount },
             totalRemaining = scopedSales.sumOf { it.remainingAmount },
+            totalExpenses = scopedExpenses.sumOf { it.amount },
+            expensesCount = scopedExpenses.size,
             salesCount = scopedSales.size,
             paidCount = scopedSales.count { it.status == PaymentStatus.PAID },
             partialCount = scopedSales.count { it.status == PaymentStatus.PARTIAL },
             unpaidCount = scopedSales.count { it.status == PaymentStatus.UNPAID },
             chartBuckets = buckets,
             topIndebtedCustomers = allCustomerDebts.take(5),
+            expenseCategoryBreakdown = buildExpenseCategoryBreakdown(scopedExpenses),
         )
     }
 
@@ -769,6 +1110,46 @@ class SalesViewModel(application: Application) : AndroidViewModel(application) {
                 result
             }
             else -> buildAllTimeMonthlyBuckets(sales)
+        }
+    }
+}
+
+internal fun buildExpenseCategoryBreakdown(
+    expenses: List<ExpenseEntity>,
+): List<ExpenseCategoryBreakdown> {
+    if (expenses.isEmpty()) return emptyList()
+    val total = expenses.sumOf { it.amount }
+    return expenses
+        .groupBy { it.categoryEnum }
+        .map { (cat, items) ->
+            val sum = items.sumOf { it.amount }
+            ExpenseCategoryBreakdown(
+                category = cat,
+                amount = sum,
+                count = items.size,
+                share = if (total <= 0.0) 0f else (sum / total).toFloat().coerceIn(0f, 1f),
+            )
+        }
+        .sortedByDescending { it.amount }
+}
+
+internal fun computeDailyPeriodBounds(
+    period: DailySalesPeriod,
+    selectedDayMillis: Long,
+    nowMillis: Long = System.currentTimeMillis(),
+): Pair<Long, Long> {
+    val todayStart = LedgerFormatters.startOfDayMillis(nowMillis)
+    val todayEnd = LedgerFormatters.endOfDayMillis(nowMillis)
+    return when (period) {
+        DailySalesPeriod.TODAY -> todayStart to todayEnd
+        DailySalesPeriod.YESTERDAY -> {
+            val yesterdayStart = LedgerFormatters.addDays(todayStart, -1)
+            yesterdayStart to LedgerFormatters.endOfDayMillis(yesterdayStart)
+        }
+        DailySalesPeriod.WEEK -> LedgerFormatters.addDays(todayStart, -6) to todayEnd
+        DailySalesPeriod.MONTH -> LedgerFormatters.startOfMonthMillis(nowMillis) to todayEnd
+        DailySalesPeriod.CUSTOM_DAY -> {
+            LedgerFormatters.startOfDayMillis(selectedDayMillis) to LedgerFormatters.endOfDayMillis(selectedDayMillis)
         }
     }
 }

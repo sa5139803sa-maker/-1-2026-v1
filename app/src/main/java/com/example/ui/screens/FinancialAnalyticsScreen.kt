@@ -18,10 +18,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ReceiptLong
 import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Paid
 import androidx.compose.material.icons.rounded.Percent
+import androidx.compose.material.icons.rounded.Savings
 import androidx.compose.material.icons.rounded.TrendingUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -58,6 +60,7 @@ import com.example.ui.SalesUiState
 import com.example.ui.components.EmptyLedgerState
 import com.example.ui.components.FinancialBarChart
 import com.example.ui.components.PaymentStatusDonutChart
+import com.example.ui.screens.ExpenseCategoryBreakdownCard
 import com.example.ui.theme.LocalLedgerColors
 import com.example.util.LedgerFormatters
 
@@ -195,11 +198,11 @@ fun FinancialAnalyticsScreen(
             }
         }
 
-        if (summary.salesCount == 0) {
+        if (summary.salesCount == 0 && summary.expensesCount == 0) {
             item {
                 EmptyLedgerState(
                     title = if (uiState.analyticsRange == AnalyticsRange.CUSTOM) {
-                        "لا توجد مبيعات في هذه الفترة المحددة"
+                        "لا توجد بيانات في هذه الفترة المحددة"
                     } else {
                         stringResource(R.string.empty_analytics_title)
                     },
@@ -258,11 +261,33 @@ fun FinancialAnalyticsScreen(
                             modifier = Modifier.weight(1f),
                         )
                     }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        KpiCard(
+                            title = stringResource(R.string.total_expenses_label),
+                            value = LedgerFormatters.formatShekel(summary.totalExpenses),
+                            subtitle = "${summary.expensesCount} مصروف",
+                            icon = Icons.AutoMirrored.Rounded.ReceiptLong,
+                            accentColor = ledgerColors.expense,
+                            modifier = Modifier.weight(1f),
+                        )
+                        val netPositive = summary.netCollectedProfit >= 0.0
+                        KpiCard(
+                            title = stringResource(R.string.net_cash_label),
+                            value = LedgerFormatters.formatShekel(summary.netCollectedProfit),
+                            subtitle = "صافي الدفتر: ${LedgerFormatters.formatShekel(summary.netSalesProfit)}",
+                            icon = Icons.Rounded.Savings,
+                            accentColor = if (netPositive) ledgerColors.paid else ledgerColors.expense,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
             }
 
             // Stacked Bar Chart Card
-            if (summary.chartBuckets.isNotEmpty()) {
+            if (summary.salesCount > 0 && summary.chartBuckets.isNotEmpty()) {
                 item {
                     Card(
                         shape = MaterialTheme.shapes.large,
@@ -287,30 +312,41 @@ fun FinancialAnalyticsScreen(
             }
 
             // Donut Chart Card
-            item {
-                Card(
-                    shape = MaterialTheme.shapes.large,
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
+            if (summary.salesCount > 0) {
+                item {
+                    Card(
+                        shape = MaterialTheme.shapes.large,
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     ) {
-                        Text(
-                            text = stringResource(R.string.chart_status_breakdown),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        PaymentStatusDonutChart(
-                            paidCount = summary.paidCount,
-                            partialCount = summary.partialCount,
-                            unpaidCount = summary.unpaidCount,
-                            collectionRate = summary.collectionRate,
-                        )
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.chart_status_breakdown),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            PaymentStatusDonutChart(
+                                paidCount = summary.paidCount,
+                                partialCount = summary.partialCount,
+                                unpaidCount = summary.unpaidCount,
+                                collectionRate = summary.collectionRate,
+                            )
+                        }
                     }
+                }
+            }
+
+            // Expense Category Breakdown Card
+            if (summary.expenseCategoryBreakdown.isNotEmpty()) {
+                item {
+                    ExpenseCategoryBreakdownCard(
+                        breakdown = summary.expenseCategoryBreakdown,
+                    )
                 }
             }
 

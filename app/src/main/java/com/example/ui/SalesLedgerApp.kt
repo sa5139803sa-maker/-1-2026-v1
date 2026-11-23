@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
+import androidx.compose.material.icons.automirrored.rounded.ReceiptLong
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.PendingActions
@@ -59,14 +61,18 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.R
 import com.example.data.AppThemeMode
+import com.example.ui.components.AddExpenseBottomSheet
 import com.example.ui.components.AddSaleBottomSheet
 import com.example.ui.components.CustomerDebtDetailSheet
 import com.example.ui.components.CustomerPurchasesDetailSheet
+import com.example.ui.components.ExpenseDetailBottomSheet
 import com.example.ui.components.SaleDetailBottomSheet
 import com.example.ui.screens.CustomersScreen
 import com.example.ui.screens.DailySalesScreen
+import com.example.ui.screens.ExpensesScreen
 import com.example.ui.screens.FinancialAnalyticsScreen
 import com.example.ui.screens.UnpaidDebtsScreen
+import com.example.util.LedgerFormatters
 
 private data class TabNavItem(
     val tab: AppTab,
@@ -115,6 +121,13 @@ fun SalesLedgerApp(
                 testTag = "nav_tab_customers",
             ),
             TabNavItem(
+                tab = AppTab.EXPENSES,
+                labelRes = R.string.tab_expenses,
+                selectedIcon = Icons.AutoMirrored.Rounded.ReceiptLong,
+                unselectedIcon = Icons.AutoMirrored.Outlined.ReceiptLong,
+                testTag = "nav_tab_expenses",
+            ),
+            TabNavItem(
                 tab = AppTab.ANALYTICS,
                 labelRes = R.string.tab_analytics,
                 selectedIcon = Icons.Rounded.BarChart,
@@ -128,6 +141,7 @@ fun SalesLedgerApp(
         AppTab.DAILY -> stringResource(R.string.daily_title)
         AppTab.UNPAID -> stringResource(R.string.unpaid_title)
         AppTab.CUSTOMERS -> stringResource(R.string.customers_title)
+        AppTab.EXPENSES -> stringResource(R.string.expenses_title)
         AppTab.ANALYTICS -> stringResource(R.string.analytics_title)
     }
 
@@ -183,8 +197,10 @@ fun SalesLedgerApp(
                                 label = {
                                     Text(
                                         text = stringResource(item.labelRes),
-                                        style = MaterialTheme.typography.labelMedium,
+                                        style = MaterialTheme.typography.labelSmall,
                                         maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis,
                                     )
                                 },
                             )
@@ -193,25 +209,48 @@ fun SalesLedgerApp(
                 }
             },
             floatingActionButton = {
-                if (uiState.selectedTab != AppTab.ANALYTICS) {
-                    ExtendedFloatingActionButton(
-                        onClick = { viewModel.openAddSaleSheet() },
-                        modifier = Modifier.testTag("add_sale_fab"),
-                        icon = {
-                            Icon(
-                                imageVector = Icons.Rounded.Add,
-                                contentDescription = stringResource(R.string.add_sale),
-                            )
-                        },
-                        text = {
-                            Text(
-                                text = stringResource(R.string.add_sale),
-                                style = MaterialTheme.typography.labelLarge,
-                            )
-                        },
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                    )
+                when (uiState.selectedTab) {
+                    AppTab.EXPENSES -> {
+                        ExtendedFloatingActionButton(
+                            onClick = { viewModel.openAddExpenseSheet() },
+                            modifier = Modifier.testTag("add_expense_fab"),
+                            icon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.Add,
+                                    contentDescription = stringResource(R.string.add_expense),
+                                )
+                            },
+                            text = {
+                                Text(
+                                    text = stringResource(R.string.add_expense),
+                                    style = MaterialTheme.typography.labelLarge,
+                                )
+                            },
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
+                    AppTab.ANALYTICS -> Unit
+                    else -> {
+                        ExtendedFloatingActionButton(
+                            onClick = { viewModel.openAddSaleSheet() },
+                            modifier = Modifier.testTag("add_sale_fab"),
+                            icon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.Add,
+                                    contentDescription = stringResource(R.string.add_sale),
+                                )
+                            },
+                            text = {
+                                Text(
+                                    text = stringResource(R.string.add_sale),
+                                    style = MaterialTheme.typography.labelLarge,
+                                )
+                            },
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
                 }
             },
         ) { innerPadding ->
@@ -266,6 +305,7 @@ fun SalesLedgerApp(
                             onNextDay = viewModel::nextDay,
                             onGoToToday = viewModel::goToToday,
                             onSelectDay = viewModel::selectDay,
+                            onSelectPeriod = viewModel::setDailySalesPeriod,
                             onSelectFilter = viewModel::setDailyFilter,
                             onSearchQueryChange = viewModel::setDailySearchQuery,
                             onSaleClick = { viewModel.openSaleDetail(it.sale.id) },
@@ -291,6 +331,21 @@ fun SalesLedgerApp(
                             onCustomerClick = { viewModel.openCustomerPurchases(it.customerName) },
                             modifier = constrainedModifier,
                         )
+                        AppTab.EXPENSES -> ExpensesScreen(
+                            uiState = uiState,
+                            onNavigateBackToDaily = { viewModel.selectTab(AppTab.DAILY) },
+                            onRangeChange = viewModel::setExpenseRange,
+                            onPreviousDay = viewModel::previousExpenseDay,
+                            onNextDay = viewModel::nextExpenseDay,
+                            onGoToToday = viewModel::goToExpenseToday,
+                            onSelectDay = viewModel::selectExpenseDay,
+                            onCustomStartChange = viewModel::setExpenseCustomStart,
+                            onCustomEndChange = viewModel::setExpenseCustomEnd,
+                            onCategoryFilterChange = viewModel::setExpenseCategoryFilter,
+                            onSearchQueryChange = viewModel::setExpenseSearchQuery,
+                            onExpenseClick = { viewModel.openExpenseDetail(it.id) },
+                            modifier = constrainedModifier,
+                        )
                         AppTab.ANALYTICS -> FinancialAnalyticsScreen(
                             uiState = uiState,
                             onNavigateBackToDaily = { viewModel.selectTab(AppTab.DAILY) },
@@ -307,9 +362,13 @@ fun SalesLedgerApp(
     }
 
     if (uiState.isAddSaleSheetVisible) {
+        val addSaleDayMillis = when (uiState.dailySalesPeriod) {
+            DailySalesPeriod.YESTERDAY, DailySalesPeriod.CUSTOM_DAY -> uiState.selectedDayMillis
+            else -> LedgerFormatters.startOfDayMillis(System.currentTimeMillis())
+        }
         AddSaleBottomSheet(
-            recentCustomers = uiState.recentCustomers,
-            selectedDayMillis = uiState.selectedDayMillis,
+            knownCustomers = uiState.allCustomerSummaries,
+            selectedDayMillis = addSaleDayMillis,
             initialCustomerName = uiState.prefilledCustomerName,
             onDismiss = viewModel::closeAddSaleSheet,
             onSaveSale = { customerName, totalAmount, initialPayment, note ->
@@ -318,7 +377,7 @@ fun SalesLedgerApp(
                     totalAmount = totalAmount,
                     initialPaymentAmount = initialPayment,
                     note = note,
-                    dayStartMillis = uiState.selectedDayMillis,
+                    dayStartMillis = addSaleDayMillis,
                 )
             },
         )
@@ -331,6 +390,13 @@ fun SalesLedgerApp(
             onSelectSale = { saleItem ->
                 viewModel.closeCustomerDebts()
                 viewModel.openSaleDetail(saleItem.sale.id)
+            },
+            onRecordAccountPayment = { amount ->
+                viewModel.recordCustomerAccountPayment(
+                    customerName = customerDebt.customerName,
+                    sales = customerDebt.sales,
+                    amount = amount,
+                )
             },
             onSettleAllCustomerDebts = {
                 viewModel.settleCustomerAllDebts(customerDebt)
@@ -351,6 +417,13 @@ fun SalesLedgerApp(
                 viewModel.closeCustomerPurchases()
                 viewModel.openAddSaleSheet(prefilledCustomer = name)
             },
+            onRecordAccountPayment = { amount ->
+                viewModel.recordCustomerAccountPayment(
+                    customerName = customerSummary.customerName,
+                    sales = customerSummary.sales,
+                    amount = amount,
+                )
+            },
             onSettleAllDebts = {
                 viewModel.settleCustomerPurchaseDebts(customerSummary)
             },
@@ -368,6 +441,40 @@ fun SalesLedgerApp(
                 viewModel.updateSale(saleItem, name, total, note)
             },
             onDeleteSale = { viewModel.deleteSale(saleItem.sale.id) },
+        )
+    }
+
+    if (uiState.isAddExpenseSheetVisible) {
+        AddExpenseBottomSheet(
+            recentTitles = uiState.recentExpenseTitles,
+            initialDayMillis = uiState.expenseDayMillis,
+            onDismiss = viewModel::closeAddExpenseSheet,
+            onSaveExpense = { title, category, amount, note, dayStartMillis ->
+                viewModel.addExpense(
+                    title = title,
+                    category = category,
+                    amount = amount,
+                    note = note,
+                    dayStartMillis = dayStartMillis,
+                )
+            },
+        )
+    }
+
+    uiState.selectedExpense?.let { expenseItem ->
+        ExpenseDetailBottomSheet(
+            expense = expenseItem,
+            onDismiss = viewModel::closeExpenseDetail,
+            onUpdateExpense = { title, category, amount, note ->
+                viewModel.updateExpense(
+                    existing = expenseItem,
+                    title = title,
+                    category = category,
+                    amount = amount,
+                    note = note,
+                )
+            },
+            onDeleteExpense = { viewModel.deleteExpense(expenseItem.id) },
         )
     }
 }

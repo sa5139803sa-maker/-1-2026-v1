@@ -21,7 +21,6 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -399,21 +398,15 @@ fun SaleDetailBottomSheet(
                         }
                     }
 
-                    // Quick half-balance chip when remaining is >= 2
-                    if (saleWithPayments.remainingAmount >= 2.0) {
-                        val halfAmount = (saleWithPayments.remainingAmount / 2.0)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            AssistChip(
-                                onClick = {
-                                    paymentText = LedgerFormatters.formatShekel(halfAmount, showSymbol = false).replace(",", "")
-                                    paymentError = null
-                                },
-                                label = {
-                                    Text("نصف المتبقي (${LedgerFormatters.formatShekel(halfAmount)})")
-                                },
-                            )
-                        }
-                    }
+                    QuickAmountSelector(
+                        currentText = paymentText,
+                        onAmountChange = {
+                            paymentText = it
+                            paymentError = null
+                        },
+                        maxAmount = saleWithPayments.remainingAmount,
+                        testTagPrefix = "detail_payment_quick",
+                    )
                 }
             }
 
