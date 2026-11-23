@@ -16,8 +16,10 @@ android {
     applicationId = "com.aistudio.salesledger.kxrmpq"
     minSdk = 24
     targetSdk = 36
-    versionCode = 2
-    versionName = "1.1"
+    // GitHub Actions increments the run number for each new build so Android accepts updates.
+    val buildRunNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+    versionCode = maxOf(2, buildRunNumber + 1)
+    versionName = "1.1.$buildRunNumber"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
