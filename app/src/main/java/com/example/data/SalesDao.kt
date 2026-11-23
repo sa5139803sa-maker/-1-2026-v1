@@ -14,6 +14,10 @@ interface SalesDao {
     @Query("SELECT * FROM sales ORDER BY createdAtMillis DESC")
     fun observeAllSalesWithPayments(): Flow<List<SaleWithPayments>>
 
+    @Transaction
+    @Query("SELECT * FROM sales ORDER BY createdAtMillis ASC")
+    suspend fun getAllSalesWithPaymentsOnce(): List<SaleWithPayments>
+
     @Query("SELECT DISTINCT customerName FROM sales ORDER BY createdAtMillis DESC")
     fun observeRecentCustomerNames(): Flow<List<String>>
 
@@ -36,6 +40,12 @@ interface SalesDao {
 
     @Query("DELETE FROM sales WHERE id = :saleId")
     suspend fun deleteSaleById(saleId: Long)
+
+    @Query("DELETE FROM payments")
+    suspend fun clearAllPayments()
+
+    @Query("DELETE FROM sales")
+    suspend fun clearAllSales()
 
     @Transaction
     suspend fun insertSaleWithInitialPayment(

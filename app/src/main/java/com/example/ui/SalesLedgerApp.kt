@@ -1,5 +1,7 @@
 package com.example.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +22,7 @@ import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.PendingActions
 import androidx.compose.material.icons.outlined.PointOfSale
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Group
@@ -31,6 +34,7 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -63,9 +67,11 @@ import com.example.R
 import com.example.data.AppThemeMode
 import com.example.ui.components.AddExpenseBottomSheet
 import com.example.ui.components.AddSaleBottomSheet
+import com.example.ui.components.BackupAndExportBottomSheet
 import com.example.ui.components.CustomerDebtDetailSheet
 import com.example.ui.components.CustomerPurchasesDetailSheet
 import com.example.ui.components.ExpenseDetailBottomSheet
+import com.example.ui.components.ImportBackupConfirmationDialog
 import com.example.ui.components.SaleDetailBottomSheet
 import com.example.ui.screens.CustomersScreen
 import com.example.ui.screens.DailySalesScreen
@@ -73,6 +79,9 @@ import com.example.ui.screens.ExpensesScreen
 import com.example.ui.screens.FinancialAnalyticsScreen
 import com.example.ui.screens.UnpaidDebtsScreen
 import com.example.util.LedgerFormatters
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private data class TabNavItem(
     val tab: AppTab,
@@ -90,6 +99,36 @@ fun SalesLedgerApp(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    val exportJsonLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        uri?.let { viewModel.exportJsonBackup(it) }
+    }
+
+    val importJsonLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        uri?.let { viewModel.prepareJsonImport(it) }
+    }
+
+    val exportExcelLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ),
+    ) { uri ->
+        uri?.let { viewModel.exportUnpaidExcel(it) }
+    }
+
+    fun launchJsonExport() {
+        val dateStamp = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        exportJsonLauncher.launch("sales_ledger_backup_$dateStamp.json")
+    }
+
+    fun launchExcelExport() {
+        val dateStamp = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        exportExcelLauncher.launch("unpaid_debts_$dateStamp.xlsx")
+    }
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { message ->
@@ -163,6 +202,16 @@ fun SalesLedgerApp(
                         )
                     },
                     actions = {
+                        IconButton(
+                            onClick = viewModel::openBackupSheet,
+                            modifier = Modifier.testTag("backup_export_button"),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Backup,
+                                contentDescription = stringResource(R.string.backup_export_title),
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
                         ThemeSwitchPill(
                             isDarkTheme = isDarkTheme,
                             onSelectLight = { viewModel.setThemeMode(AppThemeMode.LIGHT) },
@@ -321,6 +370,7 @@ fun SalesLedgerApp(
                             onSaleClick = { viewModel.openSaleDetail(it.sale.id) },
                             onQuickSettleSale = { viewModel.settleSaleFull(it) },
                             onCustomerClick = { viewModel.openCustomerDebts(it.customerName) },
+                            onExportExcelClick = { launchExcelExport() },
                             modifier = constrainedModifier,
                         )
                         AppTab.CUSTOMERS -> CustomersScreen(
@@ -475,6 +525,30 @@ fun SalesLedgerApp(
                 )
             },
             onDeleteExpense = { viewModel.deleteExpense(expenseItem.id) },
+        )
+    }
+
+    if (uiState.isBackupSheetVisible) {
+        BackupAndExportBottomSheet(
+            totalSalesCount = uiState.totalAllSalesCount,
+            totalExpensesCount = uiState.totalAllExpensesCount,
+            unpaidInvoicesCount = uiState.totalUnpaidInvoicesCount,
+            unpaidTotalAmount = uiState.totalUnpaidBalance,
+            onDismiss = viewModel::closeBackupSheet,
+            onExportJsonClick = { launchJsonExport() },
+            onImportJsonClick = {
+                importJsonLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
+            },
+            onExportUnpaidExcelClick = { launchExcelExport() },
+        )
+    }
+
+    uiState.pendingImportBackup?.let { backupData ->
+        ImportBackupConfirmationDialog(
+            backupData = backupData,
+            onDismiss = viewModel::dismissImportConfirmation,
+            onConfirmMerge = { viewModel.confirmJsonImport(replaceExisting = false) },
+            onConfirmReplace = { viewModel.confirmJsonImport(replaceExisting = true) },
         )
     }
 }

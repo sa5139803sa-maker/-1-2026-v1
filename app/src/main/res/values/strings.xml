@@ -154,4 +154,18 @@
     <string name="error_empty_expense_title">يرجى إدخال بيان المصروف</string>
     <string name="delete_expense_confirm_title">حذف المصروف؟</string>
     <string name="delete_expense_confirm_body">سيتم حذف هذا المصروف نهائياً من السجل.</string>
+
+    <!-- Backup, Restore & Excel Export -->
+    <string name="backup_export_title">النسخ الاحتياطي والتصدير</string>
+    <string name="export_json_title">حفظ نسخة احتياطية (JSON)</string>
+    <string name="export_json_subtitle">تصدير جميع المبيعات والدفعات والمصروفات في ملف واحد</string>
+    <string name="import_json_title">استيراد بيانات (JSON)</string>
+    <string name="import_json_subtitle">استرجاع البيانات أو دمجها من ملف نسخة احتياطية</string>
+    <string name="export_excel_title">تصدير إكسل غير المسدد (.xlsx)</string>
+    <string name="export_excel_subtitle">ملف إكسل بجدولين: ملخص العملاء وتفاصيل الفواتير المفتوحة</string>
+    <string name="export_excel_short">تصدير إكسل</string>
+    <string name="import_confirm_title">تأكيد استيراد النسخة الاحتياطية</string>
+    <string name="import_mode_merge">دمج مع البيانات الحالية</string>
+    <string name="import_mode_replace">استبدال البيانات الحالية</string>
+    <string name="no_unpaid_to_export">لا توجد ذمم غير مسددة لتصديرها حالياً</string>
 </resources>

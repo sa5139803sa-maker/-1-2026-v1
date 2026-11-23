@@ -13,6 +13,9 @@ interface ExpenseDao {
     @Query("SELECT * FROM expenses ORDER BY createdAtMillis DESC")
     fun observeAllExpenses(): Flow<List<ExpenseEntity>>
 
+    @Query("SELECT * FROM expenses ORDER BY createdAtMillis ASC")
+    suspend fun getAllExpensesOnce(): List<ExpenseEntity>
+
     @Query("SELECT title FROM expenses GROUP BY title ORDER BY MAX(createdAtMillis) DESC LIMIT 20")
     fun observeRecentExpenseTitles(): Flow<List<String>>
 
@@ -24,4 +27,7 @@ interface ExpenseDao {
 
     @Query("DELETE FROM expenses WHERE id = :expenseId")
     suspend fun deleteExpenseById(expenseId: Long)
+
+    @Query("DELETE FROM expenses")
+    suspend fun clearAllExpenses()
 }

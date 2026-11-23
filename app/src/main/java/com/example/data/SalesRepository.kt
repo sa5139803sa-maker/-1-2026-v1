@@ -1,10 +1,23 @@
 package com.example.data
 
+import androidx.room.withTransaction
+import com.example.util.LedgerBackupData
+import com.example.util.LedgerFormatters
+import com.example.util.LedgerJsonBackup
+import kotlin.math.roundToLong
 import kotlinx.coroutines.flow.Flow
+
+data class ImportBackupResult(
+    val importedSales: Int,
+    val importedPayments: Int,
+    val importedExpenses: Int,
+    val skippedDuplicates: Int,
+)
 
 class SalesRepository(
     private val salesDao: SalesDao,
     private val expenseDao: ExpenseDao,
+    private val database: AppDatabase? = null,
 ) {
 
     fun observeAllSales(): Flow<List<SaleWithPayments>> = salesDao.observeAllSalesWithPayments()
@@ -14,6 +27,121 @@ class SalesRepository(
     fun observeAllExpenses(): Flow<List<ExpenseEntity>> = expenseDao.observeAllExpenses()
 
     fun observeRecentExpenseTitles(): Flow<List<String>> = expenseDao.observeRecentExpenseTitles()
+
+    suspend fun getAllSalesOnce(): List<SaleWithPayments> = salesDao.getAllSalesWithPaymentsOnce()
+
+    suspend fun exportJsonBackupString(): String {
+        val sales = salesDao.getAllSalesWithPaymentsOnce()
+        val expenses = expenseDao.getAllExpensesOnce()
+        val backup = LedgerJsonBackup.fromEntities(sales = sales, expenses = expenses)
+        return LedgerJsonBackup.toJsonString(backup)
+    }
+
+    suspend fun importBackup(
+        backup: LedgerBackupData,
+        replaceExisting: Boolean,
+    ): ImportBackupResult {
+        suspend fun performImport(): ImportBackupResult {
+            var importedSales = 0
+            var importedPayments = 0
+            var importedExpenses = 0
+            var skippedDuplicates = 0
+
+            val existingSaleSignatures = HashSet<Triple<String, Long, Long>>()
+            val existingExpenseSignatures = HashSet<Triple<String, Long, Long>>()
+
+            if (replaceExisting) {
+                salesDao.clearAllPayments()
+                salesDao.clearAllSales()
+                expenseDao.clearAllExpenses()
+            } else {
+                salesDao.getAllSalesWithPaymentsOnce().forEach { item ->
+                    existingSaleSignatures += Triple(
+                        LedgerFormatters.normalizeArabicText(item.sale.customerName),
+                        (item.sale.totalAmount * 100.0).roundToLong(),
+                        item.sale.createdAtMillis,
+                    )
+                }
+                expenseDao.getAllExpensesOnce().forEach { exp ->
+                    existingExpenseSignatures += Triple(
+                        LedgerFormatters.normalizeArabicText(exp.title),
+                        (exp.amount * 100.0).roundToLong(),
+                        exp.createdAtMillis,
+                    )
+                }
+            }
+
+            backup.sales.forEach { bSale ->
+                val sig = Triple(
+                    LedgerFormatters.normalizeArabicText(bSale.customerName),
+                    (bSale.totalAmount * 100.0).roundToLong(),
+                    bSale.createdAtMillis,
+                )
+                if (!replaceExisting && sig in existingSaleSignatures) {
+                    skippedDuplicates++
+                } else {
+                    val newSaleId = salesDao.insertSale(
+                        SaleEntity(
+                            customerName = bSale.customerName.trim(),
+                            totalAmount = bSale.totalAmount,
+                            note = bSale.note.trim(),
+                            createdAtMillis = bSale.createdAtMillis,
+                        )
+                    )
+                    importedSales++
+                    existingSaleSignatures += sig
+                    if (bSale.payments.isNotEmpty()) {
+                        val mappedPayments = bSale.payments.map { bp ->
+                            PaymentEntity(
+                                saleId = newSaleId,
+                                amount = bp.amount,
+                                paidAtMillis = bp.paidAtMillis,
+                                note = bp.note.trim(),
+                            )
+                        }
+                        salesDao.insertPaymentsBatch(mappedPayments)
+                        importedPayments += mappedPayments.size
+                    }
+                }
+            }
+
+            backup.expenses.forEach { bExp ->
+                val sig = Triple(
+                    LedgerFormatters.normalizeArabicText(bExp.title),
+                    (bExp.amount * 100.0).roundToLong(),
+                    bExp.createdAtMillis,
+                )
+                if (!replaceExisting && sig in existingExpenseSignatures) {
+                    skippedDuplicates++
+                } else {
+                    expenseDao.insertExpense(
+                        ExpenseEntity(
+                            title = bExp.title.trim(),
+                            category = ExpenseCategory.fromKey(bExp.category).name,
+                            amount = bExp.amount,
+                            note = bExp.note.trim(),
+                            createdAtMillis = bExp.createdAtMillis,
+                        )
+                    )
+                    importedExpenses++
+                    existingExpenseSignatures += sig
+                }
+            }
+
+            return ImportBackupResult(
+                importedSales = importedSales,
+                importedPayments = importedPayments,
+                importedExpenses = importedExpenses,
+                skippedDuplicates = skippedDuplicates,
+            )
+        }
+
+        return if (database != null) {
+            database.withTransaction { performImport() }
+        } else {
+            performImport()
+        }
+    }
 
     suspend fun addSale(
         customerName: String,

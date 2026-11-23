@@ -7,11 +7,16 @@ import com.example.data.PaymentStatus
 import com.example.data.SaleEntity
 import com.example.data.SaleWithPayments
 import com.example.ui.AnalyticsSummary
+import com.example.ui.CustomerDebtSummary
 import com.example.ui.DailySalesPeriod
 import com.example.ui.buildExpenseCategoryBreakdown
 import com.example.ui.computeDailyPeriodBounds
 import com.example.ui.components.computeFifoPreview
 import com.example.util.LedgerFormatters
+import com.example.util.LedgerJsonBackup
+import com.example.util.UnpaidExcelExporter
+import java.io.ByteArrayInputStream
+import java.util.zip.ZipInputStream
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -135,5 +140,108 @@ class ExampleUnitTest {
         val (mStart, mEnd) = computeDailyPeriodBounds(DailySalesPeriod.MONTH, todayStart, now)
         assertEquals(LedgerFormatters.startOfMonthMillis(now), mStart)
         assertEquals(todayEnd, mEnd)
+    }
+
+    @Test
+    fun `json backup round-trip preserves arabic text special characters and nested payments`() {
+        val sale = SaleWithPayments(
+            sale = SaleEntity(
+                id = 7L,
+                customerName = "أحمد \"أبو خالد\" محمد",
+                totalAmount = 345.75,
+                note = "سطر أول\nسطر ثاني",
+                createdAtMillis = 1_763_800_000_000L,
+            ),
+            payments = listOf(
+                PaymentEntity(
+                    id = 21L,
+                    saleId = 7L,
+                    amount = 100.25,
+                    paidAtMillis = 1_763_805_000_000L,
+                    note = "دفعة أولى",
+                )
+            ),
+        )
+        val expense = ExpenseEntity(
+            id = 4L,
+            title = "فاتورة كهرباء \\ شهر",
+            category = ExpenseCategory.UTILITIES.name,
+            amount = 180.5,
+            note = "فرع رئيسي",
+            createdAtMillis = 1_763_810_000_000L,
+        )
+
+        val backup = LedgerJsonBackup.fromEntities(
+            sales = listOf(sale),
+            expenses = listOf(expense),
+            exportedAtMillis = 1_763_890_000_000L,
+        )
+        val json = LedgerJsonBackup.toJsonString(backup)
+        val parsed = LedgerJsonBackup.parseJsonString(json)
+
+        assertEquals(1_763_890_000_000L, parsed.exportedAtMillis)
+        assertEquals(1, parsed.sales.size)
+        assertEquals("أحمد \"أبو خالد\" محمد", parsed.sales[0].customerName)
+        assertEquals(345.75, parsed.sales[0].totalAmount, 0.001)
+        assertEquals("سطر أول\nسطر ثاني", parsed.sales[0].note)
+        assertEquals(1, parsed.sales[0].payments.size)
+        assertEquals(100.25, parsed.sales[0].payments[0].amount, 0.001)
+        assertEquals(1, parsed.expenses.size)
+        assertEquals("فاتورة كهرباء \\ شهر", parsed.expenses[0].title)
+        assertEquals(ExpenseCategory.UTILITIES.name, parsed.expenses[0].category)
+        assertEquals(180.5, parsed.expenses[0].amount, 0.001)
+    }
+
+    @Test
+    fun `unpaid excel exporter builds valid rtl xlsx archive with customer and invoice sheets`() {
+        val sale = SaleWithPayments(
+            sale = SaleEntity(
+                id = 12L,
+                customerName = "محل النور & الشركاء",
+                totalAmount = 500.0,
+                note = "تسليم <عاجل>",
+                createdAtMillis = 1_763_800_000_000L,
+            ),
+            payments = listOf(PaymentEntity(id = 1L, saleId = 12L, amount = 150.0)),
+        )
+        val customerDebt = CustomerDebtSummary(
+            customerName = "محل النور & الشركاء",
+            totalRemaining = 350.0,
+            totalAmount = 500.0,
+            totalPaid = 150.0,
+            openSalesCount = 1,
+            oldestSaleMillis = 1_763_800_000_000L,
+            sales = listOf(sale),
+        )
+
+        val bytes = UnpaidExcelExporter.buildUnpaidWorkbookBytes(
+            customerDebts = listOf(customerDebt),
+            unpaidSales = listOf(sale),
+        )
+        assertTrue(bytes.isNotEmpty())
+
+        val entries = mutableMapOf<String, String>()
+        ZipInputStream(ByteArrayInputStream(bytes)).use { zis ->
+            var entry = zis.nextEntry
+            while (entry != null) {
+                entries[entry.name] = zis.readBytes().toString(Charsets.UTF_8)
+                entry = zis.nextEntry
+            }
+        }
+
+        assertTrue(entries.containsKey("[Content_Types].xml"))
+        assertTrue(entries.containsKey("xl/workbook.xml"))
+        assertTrue(entries.containsKey("xl/styles.xml"))
+        assertTrue(entries.containsKey("xl/worksheets/sheet1.xml"))
+        assertTrue(entries.containsKey("xl/worksheets/sheet2.xml"))
+
+        val sheet1 = entries.getValue("xl/worksheets/sheet1.xml")
+        assertTrue(sheet1.contains("rightToLeft=\"1\""))
+        assertTrue(sheet1.contains("محل النور &amp; الشركاء"))
+        assertTrue(sheet1.contains("350.0"))
+
+        val sheet2 = entries.getValue("xl/worksheets/sheet2.xml")
+        assertTrue(sheet2.contains("تسليم &lt;عاجل&gt;"))
+        assertTrue(sheet2.contains("دفعة جزئية"))
     }
 }

@@ -26,12 +26,14 @@ import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Clear
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.TableView
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SegmentedButton
@@ -68,6 +70,7 @@ fun UnpaidDebtsScreen(
     onSaleClick: (SaleWithPayments) -> Unit,
     onQuickSettleSale: (SaleWithPayments) -> Unit,
     onCustomerClick: (CustomerDebtSummary) -> Unit,
+    onExportExcelClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     BackHandler { onNavigateBackToDaily() }
@@ -184,21 +187,44 @@ fun UnpaidDebtsScreen(
             }
         }
 
-        // View Mode Toggle (By Sale / By Customer)
+        // View Mode Toggle (By Sale / By Customer) + Excel Export button
         item {
-            val modes = listOf(
-                UnpaidViewMode.BY_SALE to stringResource(R.string.view_by_sale),
-                UnpaidViewMode.BY_CUSTOMER to stringResource(R.string.view_by_customer),
-            )
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                modes.forEachIndexed { index, (mode, label) ->
-                    SegmentedButton(
-                        selected = uiState.unpaidViewMode == mode,
-                        onClick = { onViewModeChange(mode) },
-                        shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
-                        modifier = Modifier.testTag("unpaid_mode_${mode.name.lowercase()}"),
-                        label = { Text(label) },
-                    )
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                val modes = listOf(
+                    UnpaidViewMode.BY_SALE to stringResource(R.string.view_by_sale),
+                    UnpaidViewMode.BY_CUSTOMER to stringResource(R.string.view_by_customer),
+                )
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    modes.forEachIndexed { index, (mode, label) ->
+                        SegmentedButton(
+                            selected = uiState.unpaidViewMode == mode,
+                            onClick = { onViewModeChange(mode) },
+                            shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
+                            modifier = Modifier.testTag("unpaid_mode_${mode.name.lowercase()}"),
+                            label = { Text(label) },
+                        )
+                    }
+                }
+
+                if (uiState.totalUnpaidInvoicesCount > 0) {
+                    OutlinedButton(
+                        onClick = onExportExcelClick,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("unpaid_export_excel_button"),
+                        shape = MaterialTheme.shapes.medium,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.TableView,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = stringResource(R.string.export_excel_title),
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
                 }
             }
         }

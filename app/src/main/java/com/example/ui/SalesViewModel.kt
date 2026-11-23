@@ -1,6 +1,7 @@
 package com.example.ui
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.AppDatabase
@@ -11,12 +12,16 @@ import com.example.data.PaymentStatus
 import com.example.data.SaleWithPayments
 import com.example.data.SalesRepository
 import com.example.data.ThemePreferences
+import com.example.util.LedgerBackupData
 import com.example.util.LedgerFormatters
+import com.example.util.LedgerJsonBackup
+import com.example.util.UnpaidExcelExporter
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -26,6 +31,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class AppTab {
     DAILY,
@@ -212,6 +218,10 @@ data class SalesUiState(
     val selectedCustomerPurchase: CustomerPurchaseSummary? = null,
     val isAddSaleSheetVisible: Boolean = false,
     val prefilledCustomerName: String = "",
+    val totalAllSalesCount: Int = 0,
+    val totalAllExpensesCount: Int = 0,
+    val isBackupSheetVisible: Boolean = false,
+    val pendingImportBackup: LedgerBackupData? = null,
 )
 
 private data class FilterInputs(
@@ -241,6 +251,8 @@ private data class FilterInputs(
     val selectedCustomerPurchaseName: String? = null,
     val isAddSaleSheetVisible: Boolean = false,
     val prefilledCustomerName: String = "",
+    val isBackupSheetVisible: Boolean = false,
+    val pendingImportBackup: LedgerBackupData? = null,
 )
 
 class SalesViewModel(application: Application) : AndroidViewModel(application) {
@@ -250,6 +262,7 @@ class SalesViewModel(application: Application) : AndroidViewModel(application) {
         SalesRepository(
             salesDao = db.salesDao(),
             expenseDao = db.expenseDao(),
+            database = db,
         )
     }
     private val themePreferences: ThemePreferences = ThemePreferences(application)
@@ -641,6 +654,108 @@ class SalesViewModel(application: Application) : AndroidViewModel(application) {
         filterInputs.value = filterInputs.value.copy(selectedExpenseId = null)
     }
 
+    // Backup, Restore & Excel Export Actions
+    fun openBackupSheet() {
+        filterInputs.value = filterInputs.value.copy(isBackupSheetVisible = true)
+    }
+
+    fun closeBackupSheet() {
+        filterInputs.value = filterInputs.value.copy(isBackupSheetVisible = false)
+    }
+
+    fun dismissImportConfirmation() {
+        filterInputs.value = filterInputs.value.copy(pendingImportBackup = null)
+    }
+
+    fun exportJsonBackup(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val jsonText = withContext(Dispatchers.IO) {
+                    val text = repository.exportJsonBackupString()
+                    val resolver = getApplication<Application>().contentResolver
+                    resolver.openOutputStream(uri)?.use { stream ->
+                        stream.write(text.toByteArray(Charsets.UTF_8))
+                        stream.flush()
+                    } ?: error("تعذر فتح الملف للكتابة")
+                    text
+                }
+                if (jsonText.isNotEmpty()) {
+                    closeBackupSheet()
+                    _events.emit("تم حفظ النسخة الاحتياطية (JSON) بنجاح")
+                }
+            } catch (e: Exception) {
+                _events.emit("تعذر حفظ النسخة الاحتياطية: ${e.message ?: "خطأ غير متوقع"}")
+            }
+        }
+    }
+
+    fun prepareJsonImport(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val parsed = withContext(Dispatchers.IO) {
+                    val resolver = getApplication<Application>().contentResolver
+                    val content = resolver.openInputStream(uri)?.use { stream ->
+                        stream.bufferedReader(Charsets.UTF_8).readText()
+                    } ?: error("تعذر قراءة الملف المحدد")
+                    LedgerJsonBackup.parseJsonString(content)
+                }
+                closeBackupSheet()
+                filterInputs.value = filterInputs.value.copy(pendingImportBackup = parsed)
+            } catch (e: Exception) {
+                _events.emit("تعذر استيراد الملف: ${e.message ?: "صيغة JSON غير صالحة"}")
+            }
+        }
+    }
+
+    fun confirmJsonImport(replaceExisting: Boolean) {
+        val backup = filterInputs.value.pendingImportBackup ?: return
+        filterInputs.value = filterInputs.value.copy(pendingImportBackup = null)
+        viewModelScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    repository.importBackup(backup = backup, replaceExisting = replaceExisting)
+                }
+                val message = buildString {
+                    append("تم استيراد ${result.importedSales} عملية بيع و ${result.importedExpenses} مصروف")
+                    if (result.skippedDuplicates > 0) {
+                        append(" (تم تخطي ${result.skippedDuplicates} مكرر)")
+                    }
+                }
+                _events.emit(message)
+            } catch (e: Exception) {
+                _events.emit("فشل استيراد البيانات: ${e.message ?: "خطأ غير متوقع"}")
+            }
+        }
+    }
+
+    fun exportUnpaidExcel(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val exportedCount = withContext(Dispatchers.IO) {
+                    val allSales = repository.getAllSalesOnce()
+                    val allUnpaid = allSales
+                        .filter { it.remainingAmount > 0.0 }
+                        .sortedByDescending { it.remainingAmount }
+                    val byCustomer = groupDebtsByCustomer(allUnpaid)
+                    val workbookBytes = UnpaidExcelExporter.buildUnpaidWorkbookBytes(
+                        customerDebts = byCustomer,
+                        unpaidSales = allUnpaid,
+                    )
+                    val resolver = getApplication<Application>().contentResolver
+                    resolver.openOutputStream(uri)?.use { stream ->
+                        stream.write(workbookBytes)
+                        stream.flush()
+                    } ?: error("تعذر فتح ملف إكسل للكتابة")
+                    allUnpaid.size
+                }
+                closeBackupSheet()
+                _events.emit("تم تصدير ملف إكسل غير المسدد ($exportedCount فاتورة)")
+            } catch (e: Exception) {
+                _events.emit("تعذر تصدير ملف إكسل: ${e.message ?: "خطأ غير متوقع"}")
+            }
+        }
+    }
+
     fun addExpense(
         title: String,
         category: ExpenseCategory,
@@ -893,6 +1008,10 @@ class SalesViewModel(application: Application) : AndroidViewModel(application) {
             selectedCustomerPurchase = selectedCustomerPurchase,
             isAddSaleSheetVisible = inputs.isAddSaleSheetVisible,
             prefilledCustomerName = inputs.prefilledCustomerName,
+            totalAllSalesCount = allSales.size,
+            totalAllExpensesCount = allExpenses.size,
+            isBackupSheetVisible = inputs.isBackupSheetVisible,
+            pendingImportBackup = inputs.pendingImportBackup,
         )
     }
 
